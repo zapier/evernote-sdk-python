@@ -18,6 +18,7 @@
 #
 
 from TTransport import TTransportBase
+import httpslib
 from cStringIO import StringIO
 
 import urlparse
@@ -92,7 +93,7 @@ class THttpClient(TTransportBase):
         self.__timeout = None
 
     def open(self):
-        protocol = httplib.HTTP if self.scheme == 'http' else httplib.HTTPS
+        protocol = httplib.HTTP if self.scheme == 'http' else httpslib.HTTPS
         self.__http = protocol(self.endpoint_host, self.endpoint_port)
 
     def close(self):
