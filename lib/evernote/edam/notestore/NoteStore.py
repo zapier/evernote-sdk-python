@@ -18,32 +18,6 @@ except:
 
 
 class Iface(object):
-  """
-  Service:  NoteStore
-  <p>
-  The NoteStore service is used by EDAM clients to exchange information
-  about the collection of notes in an account.  This is primarily used for
-  synchronization, but could also be used by a "thin" client without a full
-  local cache.
-  </p><p>
-  All functions take an "authenticationToken" parameter, which is the
-  value returned by the UserStore which permits access to the account.
-  This parameter is mandatory for all functions.
-  </p>
-  
-  Calls which require an authenticationToken may throw an EDAMUserException
-  for the following reasons:
-   <ul>
-    <li> AUTH_EXPIRED "authenticationToken" - token has expired
-    </li>
-    <li> BAD_DATA_FORMAT "authenticationToken" - token is malformed
-    </li>
-    <li> DATA_REQUIRED "authenticationToken" - token is empty
-    </li>
-    <li> INVALID_AUTH "authenticationToken" - token signature is invalid
-    </li>
-  </ul>
-  """
   def getSyncState(self, authenticationToken):
     """
     Asks the NoteStore to provide information about the status of the user
@@ -73,39 +47,7 @@ class Iface(object):
 
   def getSyncChunk(self, authenticationToken, afterUSN, maxEntries, fullSyncOnly):
     """
-    Asks the NoteStore to provide the state of the account in order of
-    last modification.  This request retrieves one block of the server's
-    state so that a client can make several small requests against a large
-    account rather than getting the entire state in one big message.
-    
-    @param afterUSN
-      The client can pass this value to ask only for objects that
-      have been updated after a certain point.  This allows the client to
-      receive updates after its last checkpoint rather than doing a full
-      synchronization on every pass.  The default value of "0" indicates
-      that the client wants to get objects from the start of the account.
-    
-    @param maxEntries
-      The maximum number of modified objects that should be
-      returned in the result SyncChunk. This can be used to limit the size
-      of each individual message to be friendly for network transfer.
-      Applications should not request more than 256 objects at a time,
-      and must handle the case where the service returns less than the
-      requested number of objects in a given request even though more
-      objects are available on the service.
-    
-    @param fullSyncOnly
-      If true, then the client only wants initial data for a full sync.
-      In this case, the service will not return any expunged objects,
-      and will not return any Resources, since these are also provided
-      in their corresponding Notes.
-    
-    @throws EDAMUserException <ul>
-      <li> BAD_DATA_FORMAT "afterUSN" - if negative
-      </li>
-      <li> BAD_DATA_FORMAT "maxEntries" - if less than 1
-      </li>
-    </ul>
+    DEPRECATED - use getFilteredSyncChunk.
     
     Parameters:
      - authenticationToken
@@ -121,7 +63,7 @@ class Iface(object):
     last modification.  This request retrieves one block of the server's
     state so that a client can make several small requests against a large
     account rather than getting the entire state in one big message.
-    This call gives more fine-grained control of the data that will
+    This call gives fine-grained control of the data that will
     be received by a client by omitting data elements that a client doesn't
     need. This may reduce network traffic and sync times.
     
@@ -390,7 +332,7 @@ class Iface(object):
     If the notebook contains any Notes, they will be moved to the current
     default notebook and moved into the trash (i.e. Note.active=false).
     <p/>
-    NOTE: This function is not available to third party applications.
+    NOTE: This function is generally not available to third party applications.
     Calls will result in an EDAMUserException with the error code
     PERMISSION_DENIED.
     
@@ -580,7 +522,7 @@ class Iface(object):
     """
     Permanently deletes the tag with the provided GUID, if present.
     <p/>
-    NOTE: This function is not available to third party applications.
+    NOTE: This function is generally not available to third party applications.
     Calls will result in an EDAMUserException with the error code
     PERMISSION_DENIED.
     
@@ -630,6 +572,10 @@ class Iface(object):
       </li>
       <li> PERMISSION_DENIED "SavedSearch" - private Tag, user doesn't own
       </li>
+    
+    @throws EDAMNotFoundException <ul>
+      <li> "SavedSearch.guid" - not found, by GUID
+      </li>
     </ul>
     
     Parameters:
@@ -644,8 +590,9 @@ class Iface(object):
     
     @param search
       The desired list of fields for the search are specified in this
-      object.  The caller must specify the
-      name, query, and format of the search.
+      object. The caller must specify the name and query for the
+      search, and may optionally specify a search scope.
+      The SavedSearch.format field is ignored by the service.
     
     @return
       The newly created SavedSearch.  The server-side GUID will be
@@ -655,8 +602,6 @@ class Iface(object):
       <li> BAD_DATA_FORMAT "SavedSearch.name" - invalid length or pattern
       </li>
       <li> BAD_DATA_FORMAT "SavedSearch.query" - invalid length
-      </li>
-      <li> BAD_DATA_FORMAT "SavedSearch.format" - not a valid QueryFormat value
       </li>
       <li> DATA_CONFLICT "SavedSearch.name" - name already in use
       </li>
@@ -672,9 +617,9 @@ class Iface(object):
 
   def updateSearch(self, authenticationToken, search):
     """
-    Submits search changes to the service.  The provided data must include
-    the search's guid field for identification.  The service will apply
-    updates to the following search fields:  name, query, and format
+    Submits search changes to the service. The provided data must include
+    the search's guid field for identification. The service will apply
+    updates to the following search fields: name, query, and scope.
     
     @param search
       The search object containing the requested changes.
@@ -686,8 +631,6 @@ class Iface(object):
       <li> BAD_DATA_FORMAT "SavedSearch.name" - invalid length or pattern
       </li>
       <li> BAD_DATA_FORMAT "SavedSearch.query" - invalid length
-      </li>
-      <li> BAD_DATA_FORMAT "SavedSearch.format" - not a valid QueryFormat value
       </li>
       <li> DATA_CONFLICT "SavedSearch.name" - name already in use
       </li>
@@ -710,7 +653,7 @@ class Iface(object):
     """
     Permanently deletes the saved search with the provided GUID, if present.
     <p/>
-    NOTE: This function is not available to third party applications.
+    NOTE: This function is generally not available to third party applications.
     Calls will result in an EDAMUserException with the error code
     PERMISSION_DENIED.
     
@@ -740,49 +683,7 @@ class Iface(object):
 
   def findNotes(self, authenticationToken, filter, offset, maxNotes):
     """
-    Used to find a set of the notes from a user's account based on various
-    criteria specified via a NoteFilter object.
-    The Notes (and any embedded Resources) will have empty Data bodies for
-    contents, resource data, and resource recognition fields.  These values
-    must be retrieved individually.
-    
-    @param authenticationToken
-      Must be a valid token for the user's account unless the NoteFilter
-      'notebookGuid' is the GUID of a public notebook.
-    
-    @param filter
-      The list of criteria that will constrain the notes to be returned.
-    
-    @param offset
-      The numeric index of the first note to show within the sorted
-      results.  The numbering scheme starts with "0".  This can be used for
-      pagination.
-    
-    @param maxNotes
-      The most notes to return in this query.  The service will return a set
-      of notes that is no larger than this number, but may return fewer notes
-      if needed.  The NoteList.totalNotes field in the return value will
-      indicate whether there are more values available after the returned set.
-    
-    @return
-      The list of notes that match the criteria.
-    
-    @throws EDAMUserException <ul>
-      <li> BAD_DATA_FORMAT "offset" - not between 0 and EDAM_USER_NOTES_MAX
-      </li>
-      <li> BAD_DATA_FORMAT "maxNotes" - not between 0 and EDAM_USER_NOTES_MAX
-      </li>
-      <li> BAD_DATA_FORMAT "NoteFilter.notebookGuid" - if malformed
-      </li>
-      <li> BAD_DATA_FORMAT "NoteFilter.tagGuids" - if any are malformed
-      </li>
-      <li> BAD_DATA_FORMAT "NoteFilter.words" - if search string too long
-      </li>
-    
-    @throws EDAMNotFoundException <ul>
-      <li> "Notebook.guid" - not found, by GUID
-      </li>
-    </ul>
+    DEPRECATED. Use findNotesMetadata.
     
     Parameters:
      - authenticationToken
@@ -845,10 +746,11 @@ class Iface(object):
     """
     Used to find the high-level information about a set of the notes from a
     user's account based on various criteria specified via a NoteFilter object.
-    This should be used instead of 'findNotes' whenever the client doesn't
-    really need all of the deep structure of every Note and Resource, but
-    just wants a high-level list of information.  This will save time and
-    bandwidth.
+    <p/>
+    Web applications that wish to periodically check for new content in a user's
+    Evernote account should consider using webhooks instead of polling this API.
+    See http://dev.evernote.com/documentation/cloud/chapters/polling_notification.php
+    for more information.
     
     @param authenticationToken
       Must be a valid token for the user's account unless the NoteFilter
@@ -1933,8 +1835,14 @@ class Iface(object):
        The uri string for the public notebook, from Notebook.publishing.uri.
     
     @throws EDAMNotFoundException <ul>
-      <li> "Publishing.uri" - not found, by URI
-      </li>
+      <li>"Publishing.uri" - not found, by URI</li>
+    </ul>
+    
+    @throws EDAMSystemException <ul>
+      <li> TAKEN_DOWN "PublicNotebook" - The specified public notebook is
+        taken down (for all requesters).</li>
+      <li> TAKEN_DOWN "Country" - The specified public notebook is taken
+        down for the requester because of an IP-based country lookup.</li>
     </ul>
     
     Parameters:
@@ -1950,20 +1858,29 @@ class Iface(object):
     for a user to access the notebook of the shared notebook owner.
     
     @param sharedNotebook
-      An shared notebook object populated with the email address of the share
+      A shared notebook object populated with the email address of the share
       recipient, the notebook guid and the access permissions. All other
-      attributes of the shared object are ignored.
+      attributes of the shared object are ignored. The SharedNotebook.allowPreview
+      field must be explicitly set with either a true or false value.
+    
     @return
       The fully populated SharedNotebook object including the server assigned
       share id and shareKey which can both be used to uniquely identify the
       SharedNotebook.
     
     @throws EDAMUserException <ul>
-      <li> BAD_DATA_FORMAT "SharedNotebook.email" - if the  email was not valid
+      <li>BAD_DATA_FORMAT "SharedNotebook.email" - if the email was not valid</li>
+      <li>BAD_DATA_FORMAT "requireLogin" - if the SharedNotebook.allowPreview field was
+          not set, and the SharedNotebook.requireLogin was also not set or was set to
+          false.</li>
+      <li>PERMISSION_DENIED "SharedNotebook.recipientSettings" - if
+          recipientSettings is set in the sharedNotebook.  Only the recipient
+          can set these values via the setSharedNotebookRecipientSettings
+          method.
       </li>
       </ul>
     @throws EDAMNotFoundException <ul>
-      <li> Notebook.guid - if the notebookGuid is not a valid guid for the user
+      <li>Notebook.guid - if the notebookGuid is not a valid GUID for the user.
       </li>
       </ul>
     
@@ -1979,8 +1896,8 @@ class Iface(object):
     
     @param authenticationToken
       Must be an authentication token from the owner or a shared notebook
-      authentication token with sufficient permissions to change invitations
-      for a notebook.
+      authentication token or business authentication token with sufficient
+      permissions to change invitations for a notebook.
     
     @param sharedNotebook
      The SharedNotebook object containing the requested changes.
@@ -2009,6 +1926,43 @@ class Iface(object):
     """
     pass
 
+  def setSharedNotebookRecipientSettings(self, authenticationToken, sharedNotebookId, recipientSettings):
+    """
+    Set values for the recipient settings associated with a shared notebook.  Having
+    update rights to the shared notebook record itself has no effect on this call;
+    only the recipient of the shared notebook can can the recipient settings.
+    
+    If you do <i>not</i> wish to, or cannot, change one of the reminderNotifyEmail or
+    reminderNotifyInApp fields, you must leave that field unset in recipientSettings.
+    This method will skip that field for updates and leave the existing state as
+    it is.
+    
+    @return The update sequence number of the account to which the shared notebook
+      belongs, which is the account from which we are sharing a notebook.
+    
+    @throws EDAMNotFoundException "sharedNotebookId" - Thrown if the service does not
+      have a shared notebook record for the sharedNotebookId on the given shard.  If you
+      receive this exception, it is probable that the shared notebook record has
+      been revoked or expired, or that you accessed the wrong shard.
+    
+    @throws EDAMUserException <ul>
+      <li>PEMISSION_DENIED "authenticationToken" - If you do not have permission to set
+          the recipient settings for the shared notebook.  Only the recipient has
+          permission to do this.
+      <li>DATA_CONFLICT "recipientSettings.reminderNotifyEmail" - Setting whether
+          or not you want to receive reminder e-mail notifications is possible on
+          a business notebook in the business to which the user belongs.  All
+          others can safely unset the reminderNotifyEmail field from the
+          recipientSettings parameter.
+    </ul>
+    
+    Parameters:
+     - authenticationToken
+     - sharedNotebookId
+     - recipientSettings
+    """
+    pass
+
   def sendMessageToSharedNotebookMembers(self, authenticationToken, notebookGuid, messageText, recipients):
     """
     Send a reminder message to some or all of the email addresses that a notebook has been
@@ -2031,7 +1985,8 @@ class Iface(object):
         The email can't be sent because this would exceed the user's daily
         email limit.
       </li>
-      <li> PERMISSION_DENIED "Notebook" - private note, user doesn't own
+      <li> PERMISSION_DENIED "Notebook.guid" - The user doesn't have permission to
+        send a message for the specified notebook.
       </li>
     </ul>
     
@@ -2066,7 +2021,7 @@ class Iface(object):
     Expunges the SharedNotebooks in the user's account using the
     SharedNotebook.id as the identifier.
     <p/>
-    NOTE: This function is not available to third party applications.
+    NOTE: This function is generally not available to third party applications.
     Calls will result in an EDAMUserException with the error code
     PERMISSION_DENIED.
     
@@ -2153,7 +2108,7 @@ class Iface(object):
     """
     Permanently expunges the linked notebook from the account.
     <p/>
-    NOTE: This function is not available to third party applications.
+    NOTE: This function is generally not available to third party applications.
     Calls will result in an EDAMUserException with the error code
     PERMISSION_DENIED.
     
@@ -2249,6 +2204,10 @@ class Iface(object):
   def emailNote(self, authenticationToken, parameters):
     """
     Attempts to send a single note to one or more email recipients.
+    <p/>
+    NOTE: This function is generally not available to third party applications.
+    Calls will result in an EDAMUserException with the error code
+    PERMISSION_DENIED.
     
     @param authenticationToken
        The note will be sent as the user logged in via this token, using that
@@ -2359,7 +2318,7 @@ class Iface(object):
     """
     pass
 
-  def authenticateToSharedNote(self, guid, noteKey):
+  def authenticateToSharedNote(self, guid, noteKey, authenticationToken):
     """
     Asks the service to produce an authentication token that can be used to
     access the contents of a single Note which was individually shared
@@ -2374,9 +2333,17 @@ class Iface(object):
       The 'noteKey' identifier from the Note that was originally created via
       a call to shareNote() and then given to a recipient to access.
     
+    @param authenticationToken
+      An optional authenticationToken that identifies the user accessing the
+      shared note. This parameter may be required to access some shared notes.
+    
     @throws EDAMUserException <ul>
       <li> PERMISSION_DENIED "Note" - the Note with that GUID is either not
         shared, or the noteKey doesn't match the current key for this note
+      </li>
+      <li> PERMISSION_DENIED "authenticationToken" - an authentication token is
+        required to access this Note, but either no authentication token or a
+        "non-owner" authentication token was provided.
       </li>
     </ul>
     
@@ -2385,9 +2352,19 @@ class Iface(object):
       </li>
     </ul>
     
+    @throws EDAMSystemException <ul>
+      <li> TAKEN_DOWN "Note" - The specified shared note is taken down (for
+        all requesters).
+      </li>
+      <li> TAKEN_DOWN "Country" - The specified shared note is taken down
+        for the requester because of an IP-based country lookup.
+      </ul>
+    </ul>
+    
     Parameters:
      - guid
      - noteKey
+     - authenticationToken
     """
     pass
 
@@ -2446,32 +2423,6 @@ class Iface(object):
 
 
 class Client(Iface):
-  """
-  Service:  NoteStore
-  <p>
-  The NoteStore service is used by EDAM clients to exchange information
-  about the collection of notes in an account.  This is primarily used for
-  synchronization, but could also be used by a "thin" client without a full
-  local cache.
-  </p><p>
-  All functions take an "authenticationToken" parameter, which is the
-  value returned by the UserStore which permits access to the account.
-  This parameter is mandatory for all functions.
-  </p>
-  
-  Calls which require an authenticationToken may throw an EDAMUserException
-  for the following reasons:
-   <ul>
-    <li> AUTH_EXPIRED "authenticationToken" - token has expired
-    </li>
-    <li> BAD_DATA_FORMAT "authenticationToken" - token is malformed
-    </li>
-    <li> DATA_REQUIRED "authenticationToken" - token is empty
-    </li>
-    <li> INVALID_AUTH "authenticationToken" - token signature is invalid
-    </li>
-  </ul>
-  """
   def __init__(self, iprot, oprot=None):
     self._iprot = self._oprot = iprot
     if oprot is not None:
@@ -2562,39 +2513,7 @@ class Client(Iface):
 
   def getSyncChunk(self, authenticationToken, afterUSN, maxEntries, fullSyncOnly):
     """
-    Asks the NoteStore to provide the state of the account in order of
-    last modification.  This request retrieves one block of the server's
-    state so that a client can make several small requests against a large
-    account rather than getting the entire state in one big message.
-    
-    @param afterUSN
-      The client can pass this value to ask only for objects that
-      have been updated after a certain point.  This allows the client to
-      receive updates after its last checkpoint rather than doing a full
-      synchronization on every pass.  The default value of "0" indicates
-      that the client wants to get objects from the start of the account.
-    
-    @param maxEntries
-      The maximum number of modified objects that should be
-      returned in the result SyncChunk. This can be used to limit the size
-      of each individual message to be friendly for network transfer.
-      Applications should not request more than 256 objects at a time,
-      and must handle the case where the service returns less than the
-      requested number of objects in a given request even though more
-      objects are available on the service.
-    
-    @param fullSyncOnly
-      If true, then the client only wants initial data for a full sync.
-      In this case, the service will not return any expunged objects,
-      and will not return any Resources, since these are also provided
-      in their corresponding Notes.
-    
-    @throws EDAMUserException <ul>
-      <li> BAD_DATA_FORMAT "afterUSN" - if negative
-      </li>
-      <li> BAD_DATA_FORMAT "maxEntries" - if less than 1
-      </li>
-    </ul>
+    DEPRECATED - use getFilteredSyncChunk.
     
     Parameters:
      - authenticationToken
@@ -2640,7 +2559,7 @@ class Client(Iface):
     last modification.  This request retrieves one block of the server's
     state so that a client can make several small requests against a large
     account rather than getting the entire state in one big message.
-    This call gives more fine-grained control of the data that will
+    This call gives fine-grained control of the data that will
     be received by a client by omitting data elements that a client doesn't
     need. This may reduce network traffic and sync times.
     
@@ -3144,7 +3063,7 @@ class Client(Iface):
     If the notebook contains any Notes, they will be moved to the current
     default notebook and moved into the trash (i.e. Note.active=false).
     <p/>
-    NOTE: This function is not available to third party applications.
+    NOTE: This function is generally not available to third party applications.
     Calls will result in an EDAMUserException with the error code
     PERMISSION_DENIED.
     
@@ -3539,7 +3458,7 @@ class Client(Iface):
     """
     Permanently deletes the tag with the provided GUID, if present.
     <p/>
-    NOTE: This function is not available to third party applications.
+    NOTE: This function is generally not available to third party applications.
     Calls will result in an EDAMUserException with the error code
     PERMISSION_DENIED.
     
@@ -3646,6 +3565,10 @@ class Client(Iface):
       </li>
       <li> PERMISSION_DENIED "SavedSearch" - private Tag, user doesn't own
       </li>
+    
+    @throws EDAMNotFoundException <ul>
+      <li> "SavedSearch.guid" - not found, by GUID
+      </li>
     </ul>
     
     Parameters:
@@ -3690,8 +3613,9 @@ class Client(Iface):
     
     @param search
       The desired list of fields for the search are specified in this
-      object.  The caller must specify the
-      name, query, and format of the search.
+      object. The caller must specify the name and query for the
+      search, and may optionally specify a search scope.
+      The SavedSearch.format field is ignored by the service.
     
     @return
       The newly created SavedSearch.  The server-side GUID will be
@@ -3701,8 +3625,6 @@ class Client(Iface):
       <li> BAD_DATA_FORMAT "SavedSearch.name" - invalid length or pattern
       </li>
       <li> BAD_DATA_FORMAT "SavedSearch.query" - invalid length
-      </li>
-      <li> BAD_DATA_FORMAT "SavedSearch.format" - not a valid QueryFormat value
       </li>
       <li> DATA_CONFLICT "SavedSearch.name" - name already in use
       </li>
@@ -3746,9 +3668,9 @@ class Client(Iface):
 
   def updateSearch(self, authenticationToken, search):
     """
-    Submits search changes to the service.  The provided data must include
-    the search's guid field for identification.  The service will apply
-    updates to the following search fields:  name, query, and format
+    Submits search changes to the service. The provided data must include
+    the search's guid field for identification. The service will apply
+    updates to the following search fields: name, query, and scope.
     
     @param search
       The search object containing the requested changes.
@@ -3760,8 +3682,6 @@ class Client(Iface):
       <li> BAD_DATA_FORMAT "SavedSearch.name" - invalid length or pattern
       </li>
       <li> BAD_DATA_FORMAT "SavedSearch.query" - invalid length
-      </li>
-      <li> BAD_DATA_FORMAT "SavedSearch.format" - not a valid QueryFormat value
       </li>
       <li> DATA_CONFLICT "SavedSearch.name" - name already in use
       </li>
@@ -3814,7 +3734,7 @@ class Client(Iface):
     """
     Permanently deletes the saved search with the provided GUID, if present.
     <p/>
-    NOTE: This function is not available to third party applications.
+    NOTE: This function is generally not available to third party applications.
     Calls will result in an EDAMUserException with the error code
     PERMISSION_DENIED.
     
@@ -3874,49 +3794,7 @@ class Client(Iface):
 
   def findNotes(self, authenticationToken, filter, offset, maxNotes):
     """
-    Used to find a set of the notes from a user's account based on various
-    criteria specified via a NoteFilter object.
-    The Notes (and any embedded Resources) will have empty Data bodies for
-    contents, resource data, and resource recognition fields.  These values
-    must be retrieved individually.
-    
-    @param authenticationToken
-      Must be a valid token for the user's account unless the NoteFilter
-      'notebookGuid' is the GUID of a public notebook.
-    
-    @param filter
-      The list of criteria that will constrain the notes to be returned.
-    
-    @param offset
-      The numeric index of the first note to show within the sorted
-      results.  The numbering scheme starts with "0".  This can be used for
-      pagination.
-    
-    @param maxNotes
-      The most notes to return in this query.  The service will return a set
-      of notes that is no larger than this number, but may return fewer notes
-      if needed.  The NoteList.totalNotes field in the return value will
-      indicate whether there are more values available after the returned set.
-    
-    @return
-      The list of notes that match the criteria.
-    
-    @throws EDAMUserException <ul>
-      <li> BAD_DATA_FORMAT "offset" - not between 0 and EDAM_USER_NOTES_MAX
-      </li>
-      <li> BAD_DATA_FORMAT "maxNotes" - not between 0 and EDAM_USER_NOTES_MAX
-      </li>
-      <li> BAD_DATA_FORMAT "NoteFilter.notebookGuid" - if malformed
-      </li>
-      <li> BAD_DATA_FORMAT "NoteFilter.tagGuids" - if any are malformed
-      </li>
-      <li> BAD_DATA_FORMAT "NoteFilter.words" - if search string too long
-      </li>
-    
-    @throws EDAMNotFoundException <ul>
-      <li> "Notebook.guid" - not found, by GUID
-      </li>
-    </ul>
+    DEPRECATED. Use findNotesMetadata.
     
     Parameters:
      - authenticationToken
@@ -4042,10 +3920,11 @@ class Client(Iface):
     """
     Used to find the high-level information about a set of the notes from a
     user's account based on various criteria specified via a NoteFilter object.
-    This should be used instead of 'findNotes' whenever the client doesn't
-    really need all of the deep structure of every Note and Resource, but
-    just wants a high-level list of information.  This will save time and
-    bandwidth.
+    <p/>
+    Web applications that wish to periodically check for new content in a user's
+    Evernote account should consider using webhooks instead of polling this API.
+    See http://dev.evernote.com/documentation/cloud/chapters/polling_notification.php
+    for more information.
     
     @param authenticationToken
       Must be a valid token for the user's account unless the NoteFilter
@@ -6088,8 +5967,14 @@ class Client(Iface):
        The uri string for the public notebook, from Notebook.publishing.uri.
     
     @throws EDAMNotFoundException <ul>
-      <li> "Publishing.uri" - not found, by URI
-      </li>
+      <li>"Publishing.uri" - not found, by URI</li>
+    </ul>
+    
+    @throws EDAMSystemException <ul>
+      <li> TAKEN_DOWN "PublicNotebook" - The specified public notebook is
+        taken down (for all requesters).</li>
+      <li> TAKEN_DOWN "Country" - The specified public notebook is taken
+        down for the requester because of an IP-based country lookup.</li>
     </ul>
     
     Parameters:
@@ -6133,20 +6018,29 @@ class Client(Iface):
     for a user to access the notebook of the shared notebook owner.
     
     @param sharedNotebook
-      An shared notebook object populated with the email address of the share
+      A shared notebook object populated with the email address of the share
       recipient, the notebook guid and the access permissions. All other
-      attributes of the shared object are ignored.
+      attributes of the shared object are ignored. The SharedNotebook.allowPreview
+      field must be explicitly set with either a true or false value.
+    
     @return
       The fully populated SharedNotebook object including the server assigned
       share id and shareKey which can both be used to uniquely identify the
       SharedNotebook.
     
     @throws EDAMUserException <ul>
-      <li> BAD_DATA_FORMAT "SharedNotebook.email" - if the  email was not valid
+      <li>BAD_DATA_FORMAT "SharedNotebook.email" - if the email was not valid</li>
+      <li>BAD_DATA_FORMAT "requireLogin" - if the SharedNotebook.allowPreview field was
+          not set, and the SharedNotebook.requireLogin was also not set or was set to
+          false.</li>
+      <li>PERMISSION_DENIED "SharedNotebook.recipientSettings" - if
+          recipientSettings is set in the sharedNotebook.  Only the recipient
+          can set these values via the setSharedNotebookRecipientSettings
+          method.
       </li>
       </ul>
     @throws EDAMNotFoundException <ul>
-      <li> Notebook.guid - if the notebookGuid is not a valid guid for the user
+      <li>Notebook.guid - if the notebookGuid is not a valid GUID for the user.
       </li>
       </ul>
     
@@ -6192,8 +6086,8 @@ class Client(Iface):
     
     @param authenticationToken
       Must be an authentication token from the owner or a shared notebook
-      authentication token with sufficient permissions to change invitations
-      for a notebook.
+      authentication token or business authentication token with sufficient
+      permissions to change invitations for a notebook.
     
     @param sharedNotebook
      The SharedNotebook object containing the requested changes.
@@ -6252,6 +6146,74 @@ class Client(Iface):
       raise result.systemException
     raise TApplicationException(TApplicationException.MISSING_RESULT, "updateSharedNotebook failed: unknown result");
 
+  def setSharedNotebookRecipientSettings(self, authenticationToken, sharedNotebookId, recipientSettings):
+    """
+    Set values for the recipient settings associated with a shared notebook.  Having
+    update rights to the shared notebook record itself has no effect on this call;
+    only the recipient of the shared notebook can can the recipient settings.
+    
+    If you do <i>not</i> wish to, or cannot, change one of the reminderNotifyEmail or
+    reminderNotifyInApp fields, you must leave that field unset in recipientSettings.
+    This method will skip that field for updates and leave the existing state as
+    it is.
+    
+    @return The update sequence number of the account to which the shared notebook
+      belongs, which is the account from which we are sharing a notebook.
+    
+    @throws EDAMNotFoundException "sharedNotebookId" - Thrown if the service does not
+      have a shared notebook record for the sharedNotebookId on the given shard.  If you
+      receive this exception, it is probable that the shared notebook record has
+      been revoked or expired, or that you accessed the wrong shard.
+    
+    @throws EDAMUserException <ul>
+      <li>PEMISSION_DENIED "authenticationToken" - If you do not have permission to set
+          the recipient settings for the shared notebook.  Only the recipient has
+          permission to do this.
+      <li>DATA_CONFLICT "recipientSettings.reminderNotifyEmail" - Setting whether
+          or not you want to receive reminder e-mail notifications is possible on
+          a business notebook in the business to which the user belongs.  All
+          others can safely unset the reminderNotifyEmail field from the
+          recipientSettings parameter.
+    </ul>
+    
+    Parameters:
+     - authenticationToken
+     - sharedNotebookId
+     - recipientSettings
+    """
+    self.send_setSharedNotebookRecipientSettings(authenticationToken, sharedNotebookId, recipientSettings)
+    return self.recv_setSharedNotebookRecipientSettings()
+
+  def send_setSharedNotebookRecipientSettings(self, authenticationToken, sharedNotebookId, recipientSettings):
+    self._oprot.writeMessageBegin('setSharedNotebookRecipientSettings', TMessageType.CALL, self._seqid)
+    args = setSharedNotebookRecipientSettings_args()
+    args.authenticationToken = authenticationToken
+    args.sharedNotebookId = sharedNotebookId
+    args.recipientSettings = recipientSettings
+    args.write(self._oprot)
+    self._oprot.writeMessageEnd()
+    self._oprot.trans.flush()
+
+  def recv_setSharedNotebookRecipientSettings(self, ):
+    (fname, mtype, rseqid) = self._iprot.readMessageBegin()
+    if mtype == TMessageType.EXCEPTION:
+      x = TApplicationException()
+      x.read(self._iprot)
+      self._iprot.readMessageEnd()
+      raise x
+    result = setSharedNotebookRecipientSettings_result()
+    result.read(self._iprot)
+    self._iprot.readMessageEnd()
+    if result.success is not None:
+      return result.success
+    if result.userException is not None:
+      raise result.userException
+    if result.notFoundException is not None:
+      raise result.notFoundException
+    if result.systemException is not None:
+      raise result.systemException
+    raise TApplicationException(TApplicationException.MISSING_RESULT, "setSharedNotebookRecipientSettings failed: unknown result");
+
   def sendMessageToSharedNotebookMembers(self, authenticationToken, notebookGuid, messageText, recipients):
     """
     Send a reminder message to some or all of the email addresses that a notebook has been
@@ -6274,7 +6236,8 @@ class Client(Iface):
         The email can't be sent because this would exceed the user's daily
         email limit.
       </li>
-      <li> PERMISSION_DENIED "Notebook" - private note, user doesn't own
+      <li> PERMISSION_DENIED "Notebook.guid" - The user doesn't have permission to
+        send a message for the specified notebook.
       </li>
     </ul>
     
@@ -6370,7 +6333,7 @@ class Client(Iface):
     Expunges the SharedNotebooks in the user's account using the
     SharedNotebook.id as the identifier.
     <p/>
-    NOTE: This function is not available to third party applications.
+    NOTE: This function is generally not available to third party applications.
     Calls will result in an EDAMUserException with the error code
     PERMISSION_DENIED.
     
@@ -6576,7 +6539,7 @@ class Client(Iface):
     """
     Permanently expunges the linked notebook from the account.
     <p/>
-    NOTE: This function is not available to third party applications.
+    NOTE: This function is generally not available to third party applications.
     Calls will result in an EDAMUserException with the error code
     PERMISSION_DENIED.
     
@@ -6761,6 +6724,10 @@ class Client(Iface):
   def emailNote(self, authenticationToken, parameters):
     """
     Attempts to send a single note to one or more email recipients.
+    <p/>
+    NOTE: This function is generally not available to third party applications.
+    Calls will result in an EDAMUserException with the error code
+    PERMISSION_DENIED.
     
     @param authenticationToken
        The note will be sent as the user logged in via this token, using that
@@ -6957,7 +6924,7 @@ class Client(Iface):
       raise result.systemException
     return
 
-  def authenticateToSharedNote(self, guid, noteKey):
+  def authenticateToSharedNote(self, guid, noteKey, authenticationToken):
     """
     Asks the service to produce an authentication token that can be used to
     access the contents of a single Note which was individually shared
@@ -6972,9 +6939,17 @@ class Client(Iface):
       The 'noteKey' identifier from the Note that was originally created via
       a call to shareNote() and then given to a recipient to access.
     
+    @param authenticationToken
+      An optional authenticationToken that identifies the user accessing the
+      shared note. This parameter may be required to access some shared notes.
+    
     @throws EDAMUserException <ul>
       <li> PERMISSION_DENIED "Note" - the Note with that GUID is either not
         shared, or the noteKey doesn't match the current key for this note
+      </li>
+      <li> PERMISSION_DENIED "authenticationToken" - an authentication token is
+        required to access this Note, but either no authentication token or a
+        "non-owner" authentication token was provided.
       </li>
     </ul>
     
@@ -6983,18 +6958,29 @@ class Client(Iface):
       </li>
     </ul>
     
+    @throws EDAMSystemException <ul>
+      <li> TAKEN_DOWN "Note" - The specified shared note is taken down (for
+        all requesters).
+      </li>
+      <li> TAKEN_DOWN "Country" - The specified shared note is taken down
+        for the requester because of an IP-based country lookup.
+      </ul>
+    </ul>
+    
     Parameters:
      - guid
      - noteKey
+     - authenticationToken
     """
-    self.send_authenticateToSharedNote(guid, noteKey)
+    self.send_authenticateToSharedNote(guid, noteKey, authenticationToken)
     return self.recv_authenticateToSharedNote()
 
-  def send_authenticateToSharedNote(self, guid, noteKey):
+  def send_authenticateToSharedNote(self, guid, noteKey, authenticationToken):
     self._oprot.writeMessageBegin('authenticateToSharedNote', TMessageType.CALL, self._seqid)
     args = authenticateToSharedNote_args()
     args.guid = guid
     args.noteKey = noteKey
+    args.authenticationToken = authenticationToken
     args.write(self._oprot)
     self._oprot.writeMessageEnd()
     self._oprot.trans.flush()
@@ -7168,6 +7154,7 @@ class Processor(Iface, TProcessor):
     self._processMap["getPublicNotebook"] = Processor.process_getPublicNotebook
     self._processMap["createSharedNotebook"] = Processor.process_createSharedNotebook
     self._processMap["updateSharedNotebook"] = Processor.process_updateSharedNotebook
+    self._processMap["setSharedNotebookRecipientSettings"] = Processor.process_setSharedNotebookRecipientSettings
     self._processMap["sendMessageToSharedNotebookMembers"] = Processor.process_sendMessageToSharedNotebookMembers
     self._processMap["listSharedNotebooks"] = Processor.process_listSharedNotebooks
     self._processMap["expungeSharedNotebooks"] = Processor.process_expungeSharedNotebooks
@@ -8254,6 +8241,24 @@ class Processor(Iface, TProcessor):
     oprot.writeMessageEnd()
     oprot.trans.flush()
 
+  def process_setSharedNotebookRecipientSettings(self, seqid, iprot, oprot):
+    args = setSharedNotebookRecipientSettings_args()
+    args.read(iprot)
+    iprot.readMessageEnd()
+    result = setSharedNotebookRecipientSettings_result()
+    try:
+      result.success = self._handler.setSharedNotebookRecipientSettings(args.authenticationToken, args.sharedNotebookId, args.recipientSettings)
+    except evernote.edam.error.ttypes.EDAMUserException, userException:
+      result.userException = userException
+    except evernote.edam.error.ttypes.EDAMNotFoundException, notFoundException:
+      result.notFoundException = notFoundException
+    except evernote.edam.error.ttypes.EDAMSystemException, systemException:
+      result.systemException = systemException
+    oprot.writeMessageBegin("setSharedNotebookRecipientSettings", TMessageType.REPLY, seqid)
+    result.write(oprot)
+    oprot.writeMessageEnd()
+    oprot.trans.flush()
+
   def process_sendMessageToSharedNotebookMembers(self, seqid, iprot, oprot):
     args = sendMessageToSharedNotebookMembers_args()
     args.read(iprot)
@@ -8476,7 +8481,7 @@ class Processor(Iface, TProcessor):
     iprot.readMessageEnd()
     result = authenticateToSharedNote_result()
     try:
-      result.success = self._handler.authenticateToSharedNote(args.guid, args.noteKey)
+      result.success = self._handler.authenticateToSharedNote(args.guid, args.noteKey, args.authenticationToken)
     except evernote.edam.error.ttypes.EDAMUserException, userException:
       result.userException = userException
     except evernote.edam.error.ttypes.EDAMNotFoundException, notFoundException:
@@ -19071,6 +19076,189 @@ class updateSharedNotebook_result(object):
   def __ne__(self, other):
     return not (self == other)
 
+class setSharedNotebookRecipientSettings_args(object):
+  """
+  Attributes:
+   - authenticationToken
+   - sharedNotebookId
+   - recipientSettings
+  """
+
+  thrift_spec = (
+    None, # 0
+    (1, TType.STRING, 'authenticationToken', None, None, ), # 1
+    (2, TType.I64, 'sharedNotebookId', None, None, ), # 2
+    (3, TType.STRUCT, 'recipientSettings', (evernote.edam.type.ttypes.SharedNotebookRecipientSettings, evernote.edam.type.ttypes.SharedNotebookRecipientSettings.thrift_spec), None, ), # 3
+  )
+
+  def __init__(self, authenticationToken=None, sharedNotebookId=None, recipientSettings=None,):
+    self.authenticationToken = authenticationToken
+    self.sharedNotebookId = sharedNotebookId
+    self.recipientSettings = recipientSettings
+
+  def read(self, iprot):
+    if iprot.__class__ == TBinaryProtocol.TBinaryProtocolAccelerated and isinstance(iprot.trans, TTransport.CReadableTransport) and self.thrift_spec is not None and fastbinary is not None:
+      fastbinary.decode_binary(self, iprot.trans, (self.__class__, self.thrift_spec))
+      return
+    iprot.readStructBegin()
+    while True:
+      (fname, ftype, fid) = iprot.readFieldBegin()
+      if ftype == TType.STOP:
+        break
+      if fid == 1:
+        if ftype == TType.STRING:
+          self.authenticationToken = iprot.readString();
+        else:
+          iprot.skip(ftype)
+      elif fid == 2:
+        if ftype == TType.I64:
+          self.sharedNotebookId = iprot.readI64();
+        else:
+          iprot.skip(ftype)
+      elif fid == 3:
+        if ftype == TType.STRUCT:
+          self.recipientSettings = evernote.edam.type.ttypes.SharedNotebookRecipientSettings()
+          self.recipientSettings.read(iprot)
+        else:
+          iprot.skip(ftype)
+      else:
+        iprot.skip(ftype)
+      iprot.readFieldEnd()
+    iprot.readStructEnd()
+
+  def write(self, oprot):
+    if oprot.__class__ == TBinaryProtocol.TBinaryProtocolAccelerated and self.thrift_spec is not None and fastbinary is not None:
+      oprot.trans.write(fastbinary.encode_binary(self, (self.__class__, self.thrift_spec)))
+      return
+    oprot.writeStructBegin('setSharedNotebookRecipientSettings_args')
+    if self.authenticationToken is not None:
+      oprot.writeFieldBegin('authenticationToken', TType.STRING, 1)
+      oprot.writeString(self.authenticationToken)
+      oprot.writeFieldEnd()
+    if self.sharedNotebookId is not None:
+      oprot.writeFieldBegin('sharedNotebookId', TType.I64, 2)
+      oprot.writeI64(self.sharedNotebookId)
+      oprot.writeFieldEnd()
+    if self.recipientSettings is not None:
+      oprot.writeFieldBegin('recipientSettings', TType.STRUCT, 3)
+      self.recipientSettings.write(oprot)
+      oprot.writeFieldEnd()
+    oprot.writeFieldStop()
+    oprot.writeStructEnd()
+
+  def validate(self):
+    return
+
+
+  def __repr__(self):
+    L = ['%s=%r' % (key, value)
+      for key, value in self.__dict__.iteritems()]
+    return '%s(%s)' % (self.__class__.__name__, ', '.join(L))
+
+  def __eq__(self, other):
+    return isinstance(other, self.__class__) and self.__dict__ == other.__dict__
+
+  def __ne__(self, other):
+    return not (self == other)
+
+class setSharedNotebookRecipientSettings_result(object):
+  """
+  Attributes:
+   - success
+   - userException
+   - notFoundException
+   - systemException
+  """
+
+  thrift_spec = (
+    (0, TType.I32, 'success', None, None, ), # 0
+    (1, TType.STRUCT, 'userException', (evernote.edam.error.ttypes.EDAMUserException, evernote.edam.error.ttypes.EDAMUserException.thrift_spec), None, ), # 1
+    (2, TType.STRUCT, 'notFoundException', (evernote.edam.error.ttypes.EDAMNotFoundException, evernote.edam.error.ttypes.EDAMNotFoundException.thrift_spec), None, ), # 2
+    (3, TType.STRUCT, 'systemException', (evernote.edam.error.ttypes.EDAMSystemException, evernote.edam.error.ttypes.EDAMSystemException.thrift_spec), None, ), # 3
+  )
+
+  def __init__(self, success=None, userException=None, notFoundException=None, systemException=None,):
+    self.success = success
+    self.userException = userException
+    self.notFoundException = notFoundException
+    self.systemException = systemException
+
+  def read(self, iprot):
+    if iprot.__class__ == TBinaryProtocol.TBinaryProtocolAccelerated and isinstance(iprot.trans, TTransport.CReadableTransport) and self.thrift_spec is not None and fastbinary is not None:
+      fastbinary.decode_binary(self, iprot.trans, (self.__class__, self.thrift_spec))
+      return
+    iprot.readStructBegin()
+    while True:
+      (fname, ftype, fid) = iprot.readFieldBegin()
+      if ftype == TType.STOP:
+        break
+      if fid == 0:
+        if ftype == TType.I32:
+          self.success = iprot.readI32();
+        else:
+          iprot.skip(ftype)
+      elif fid == 1:
+        if ftype == TType.STRUCT:
+          self.userException = evernote.edam.error.ttypes.EDAMUserException()
+          self.userException.read(iprot)
+        else:
+          iprot.skip(ftype)
+      elif fid == 2:
+        if ftype == TType.STRUCT:
+          self.notFoundException = evernote.edam.error.ttypes.EDAMNotFoundException()
+          self.notFoundException.read(iprot)
+        else:
+          iprot.skip(ftype)
+      elif fid == 3:
+        if ftype == TType.STRUCT:
+          self.systemException = evernote.edam.error.ttypes.EDAMSystemException()
+          self.systemException.read(iprot)
+        else:
+          iprot.skip(ftype)
+      else:
+        iprot.skip(ftype)
+      iprot.readFieldEnd()
+    iprot.readStructEnd()
+
+  def write(self, oprot):
+    if oprot.__class__ == TBinaryProtocol.TBinaryProtocolAccelerated and self.thrift_spec is not None and fastbinary is not None:
+      oprot.trans.write(fastbinary.encode_binary(self, (self.__class__, self.thrift_spec)))
+      return
+    oprot.writeStructBegin('setSharedNotebookRecipientSettings_result')
+    if self.success is not None:
+      oprot.writeFieldBegin('success', TType.I32, 0)
+      oprot.writeI32(self.success)
+      oprot.writeFieldEnd()
+    if self.userException is not None:
+      oprot.writeFieldBegin('userException', TType.STRUCT, 1)
+      self.userException.write(oprot)
+      oprot.writeFieldEnd()
+    if self.notFoundException is not None:
+      oprot.writeFieldBegin('notFoundException', TType.STRUCT, 2)
+      self.notFoundException.write(oprot)
+      oprot.writeFieldEnd()
+    if self.systemException is not None:
+      oprot.writeFieldBegin('systemException', TType.STRUCT, 3)
+      self.systemException.write(oprot)
+      oprot.writeFieldEnd()
+    oprot.writeFieldStop()
+    oprot.writeStructEnd()
+
+  def validate(self):
+    return
+
+
+  def __repr__(self):
+    L = ['%s=%r' % (key, value)
+      for key, value in self.__dict__.iteritems()]
+    return '%s(%s)' % (self.__class__.__name__, ', '.join(L))
+
+  def __eq__(self, other):
+    return isinstance(other, self.__class__) and self.__dict__ == other.__dict__
+
+  def __ne__(self, other):
+    return not (self == other)
+
 class sendMessageToSharedNotebookMembers_args(object):
   """
   Attributes:
@@ -21122,17 +21310,20 @@ class authenticateToSharedNote_args(object):
   Attributes:
    - guid
    - noteKey
+   - authenticationToken
   """
 
   thrift_spec = (
     None, # 0
     (1, TType.STRING, 'guid', None, None, ), # 1
     (2, TType.STRING, 'noteKey', None, None, ), # 2
+    (3, TType.STRING, 'authenticationToken', None, None, ), # 3
   )
 
-  def __init__(self, guid=None, noteKey=None,):
+  def __init__(self, guid=None, noteKey=None, authenticationToken=None,):
     self.guid = guid
     self.noteKey = noteKey
+    self.authenticationToken = authenticationToken
 
   def read(self, iprot):
     if iprot.__class__ == TBinaryProtocol.TBinaryProtocolAccelerated and isinstance(iprot.trans, TTransport.CReadableTransport) and self.thrift_spec is not None and fastbinary is not None:
@@ -21153,6 +21344,11 @@ class authenticateToSharedNote_args(object):
           self.noteKey = iprot.readString();
         else:
           iprot.skip(ftype)
+      elif fid == 3:
+        if ftype == TType.STRING:
+          self.authenticationToken = iprot.readString();
+        else:
+          iprot.skip(ftype)
       else:
         iprot.skip(ftype)
       iprot.readFieldEnd()
@@ -21170,6 +21366,10 @@ class authenticateToSharedNote_args(object):
     if self.noteKey is not None:
       oprot.writeFieldBegin('noteKey', TType.STRING, 2)
       oprot.writeString(self.noteKey)
+      oprot.writeFieldEnd()
+    if self.authenticationToken is not None:
+      oprot.writeFieldBegin('authenticationToken', TType.STRING, 3)
+      oprot.writeString(self.authenticationToken)
       oprot.writeFieldEnd()
     oprot.writeFieldStop()
     oprot.writeStructEnd()
